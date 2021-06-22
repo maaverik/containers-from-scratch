@@ -10,7 +10,8 @@ import (
 	"syscall"
 )
 
-// go run main.go run <cmd> <args>
+// go run main.go run <cmd> <args> (similar to docker run)
+// e.g., go run main.go run /bin/bash on a linux environment
 func main() {
 	switch os.Args[1] {
 	case "run":
@@ -18,18 +19,23 @@ func main() {
 	case "child":
 		child()
 	default:
-		panic("help")
+		panic("Nothing to do, guess I'll just panic...")
 	}
 }
 
 func run() {
-	fmt.Printf("Running %v \n", os.Args[2:])
+	fmt.Printf("Running parent process to spawn %v as PID %d\n", os.Args[2:], os.Getpid())
 
+	// fork-exec current process to spawn child in an isolated environment
 	cmd := exec.Command("/proc/self/exe", append([]string{"child"}, os.Args[2:]...)...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+
+	// set up namespaces for process isolation
+	// linux specific attributes
 	cmd.SysProcAttr = &syscall.SysProcAttr{
+		// hostname, process ID, mount namespaces
 		Cloneflags:   syscall.CLONE_NEWUTS | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS,
 		Unshareflags: syscall.CLONE_NEWNS,
 	}
@@ -38,9 +44,9 @@ func run() {
 }
 
 func child() {
-	fmt.Printf("Running %v \n", os.Args[2:])
+	fmt.Printf("Running child process %v as PID %d\n", os.Args[2:], os.Getpid())
 
-	cg()
+	// setup_cg()
 
 	cmd := exec.Command(os.Args[2], os.Args[3:]...)
 	cmd.Stdin = os.Stdin
@@ -48,10 +54,10 @@ func child() {
 	cmd.Stderr = os.Stderr
 
 	must(syscall.Sethostname([]byte("container")))
-	must(syscall.Chroot("/home/liz/ubuntufs"))
-	must(os.Chdir("/"))
-	must(syscall.Mount("proc", "proc", "proc", 0, ""))
-	must(syscall.Mount("thing", "mytemp", "tmpfs", 0, ""))
+	// must(syscall.Chroot("/home/liz/ubuntufs"))
+	// must(os.Chdir("/"))
+	// must(syscall.Mount("proc", "proc", "proc", 0, ""))
+	// must(syscall.Mount("thing", "mytemp", "tmpfs", 0, ""))
 
 	must(cmd.Run())
 
@@ -59,7 +65,7 @@ func child() {
 	must(syscall.Unmount("thing", 0))
 }
 
-func cg() {
+func setup_cg() {
 	cgroups := "/sys/fs/cgroup/"
 	pids := filepath.Join(cgroups, "pids")
 	os.Mkdir(filepath.Join(pids, "liz"), 0755)
